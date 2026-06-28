@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useEffect, useRef } from "react";
 
 // ─────────────────────────────────────────────
@@ -64,9 +66,7 @@ function OrbitalRing({ score, label, color, size = 120, delay = 0 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
       <svg width={size} height={size} viewBox="0 0 100 100">
-        {/* Orbit track */}
         <circle cx="50" cy="50" r="45" fill="none" stroke="#1a1f2e" strokeWidth="8" />
-        {/* Signal arc */}
         <circle
           cx="50"
           cy="50"
@@ -83,26 +83,10 @@ function OrbitalRing({ score, label, color, size = 120, delay = 0 }) {
             filter: `drop-shadow(0 0 6px ${color}80)`,
           }}
         />
-        {/* Center value */}
-        <text
-          x="50"
-          y="46"
-          textAnchor="middle"
-          fill="#e8eaf6"
-          fontSize="18"
-          fontFamily="'Space Mono', monospace"
-          fontWeight="700"
-        >
+        <text x="50" y="46" textAnchor="middle" fill="#e8eaf6" fontSize="18" fontFamily="'Space Mono', monospace" fontWeight="700">
           {(score * 100).toFixed(0)}
         </text>
-        <text
-          x="50"
-          y="62"
-          textAnchor="middle"
-          fill="#5c6bc0"
-          fontSize="9"
-          fontFamily="'Space Mono', monospace"
-        >
+        <text x="50" y="62" textAnchor="middle" fill="#5c6bc0" fontSize="9" fontFamily="'Space Mono', monospace">
           /100
         </text>
       </svg>
@@ -167,12 +151,9 @@ function TimeframeRow({ tf, data }) {
     onMouseEnter={e => e.currentTarget.style.background = "#0d1117"}
     onMouseLeave={e => e.currentTarget.style.background = "transparent"}
     >
-      {/* Timeframe label */}
       <span style={{ color: "#7986cb", fontFamily: "'Space Mono', monospace", fontSize: 12, fontWeight: 700 }}>
         {tf}
       </span>
-
-      {/* Signal bar */}
       <div style={{ position: "relative", height: 6, background: "#1a1f2e", borderRadius: 3 }}>
         <div style={{
           position: "absolute",
@@ -184,18 +165,12 @@ function TimeframeRow({ tf, data }) {
           transition: "width 1s ease",
         }} />
       </div>
-
-      {/* Signal value */}
       <span style={{ color: "#c5cae9", fontFamily: "'Space Mono', monospace", fontSize: 11, textAlign: "right" }}>
         {(data.signal * 100).toFixed(1)}%
       </span>
-
-      {/* Trade signal */}
       <div style={{ display: "flex", justifyContent: "center" }}>
         <SignalBadge signal={data.tradeSignal} />
       </div>
-
-      {/* Direction */}
       <span style={{
         color: data.direction === "bullish" ? "#00c853" : data.direction === "bearish" ? "#f44336" : "#546e7a",
         fontFamily: "'Space Mono', monospace",
@@ -214,7 +189,6 @@ function TimeframeRow({ tf, data }) {
 function PlanetaryOrbit({ aggSignal }) {
   return (
     <div style={{ position: "relative", width: 180, height: 180, flexShrink: 0 }}>
-      {/* Outer orbit */}
       <div style={{
         position: "absolute", inset: 0,
         border: "1px solid #1a2040",
@@ -229,8 +203,6 @@ function PlanetaryOrbit({ aggSignal }) {
           boxShadow: "0 0 10px #7c4dff",
         }} />
       </div>
-
-      {/* Inner orbit */}
       <div style={{
         position: "absolute", inset: 28,
         border: "1px solid #1a3040",
@@ -245,8 +217,6 @@ function PlanetaryOrbit({ aggSignal }) {
           boxShadow: "0 0 8px #00bcd4",
         }} />
       </div>
-
-      {/* Core */}
       <div style={{
         position: "absolute", inset: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -289,12 +259,6 @@ export default function FlowDashboard() {
   async function fetchSignal(sym, type) {
     setLoading(true);
     try {
-      // In production, replace with real API call:
-      // const res = await fetch(`/api/orbital?symbol=${sym}&type=${type}&timeframes=1m,5m,15m,30m,1h,4h,1D`);
-      // const json = await res.json();
-      // setData(json);
-
-      // Mock data for demo
       await new Promise(r => setTimeout(r, 800));
       setData(generateMockOrbitalData(sym));
       setLastUpdated(new Date().toLocaleTimeString());
@@ -344,7 +308,6 @@ export default function FlowDashboard() {
         ::-webkit-scrollbar-thumb { background: #1a237e; border-radius: 2px; }
       `}</style>
 
-      {/* HEADER */}
       <div style={{
         borderBottom: "1px solid #0d1225",
         padding: "16px 32px",
@@ -368,7 +331,6 @@ export default function FlowDashboard() {
             ORBITAL TRADING ENGINE
           </span>
         </div>
-
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {lastUpdated && (
             <span style={{ color: "#37474f", fontSize: 11, fontFamily: "'Space Mono', monospace" }}>
@@ -386,10 +348,7 @@ export default function FlowDashboard() {
       </div>
 
       <div style={{ padding: "24px 32px", maxWidth: 1200, margin: "0 auto" }}>
-
-        {/* SEARCH BAR */}
         <div style={{ display: "flex", gap: 10, marginBottom: 28 }}>
-          {/* Asset type toggle */}
           <div style={{ display: "flex", background: "#0d1117", borderRadius: 6, border: "1px solid #1a1f2e", overflow: "hidden" }}>
             {["crypto", "stock"].map(t => (
               <button
@@ -413,8 +372,6 @@ export default function FlowDashboard() {
               </button>
             ))}
           </div>
-
-          {/* Symbol input */}
           <input
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
@@ -432,7 +389,6 @@ export default function FlowDashboard() {
               outline: "none",
             }}
           />
-
           <button
             onClick={handleSearch}
             style={{
@@ -453,7 +409,6 @@ export default function FlowDashboard() {
           >
             SCAN
           </button>
-
           <button
             onClick={() => fetchSignal(symbol, assetType)}
             style={{
@@ -476,8 +431,6 @@ export default function FlowDashboard() {
 
         {orbital && (
           <div style={{ animation: "fadeIn 0.5s ease" }}>
-
-            {/* TOP SECTION: Orbital visualization + consensus */}
             <div style={{
               display: "grid",
               gridTemplateColumns: "auto 1fr auto",
@@ -489,10 +442,7 @@ export default function FlowDashboard() {
               padding: 28,
               marginBottom: 20,
             }}>
-              {/* Planetary orbit animation */}
               <PlanetaryOrbit aggSignal={orbital.aggregateSignal} />
-
-              {/* Consensus block */}
               <div style={{ padding: "0 16px" }}>
                 <div style={{ color: "#3d4f8a", fontSize: 11, fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 8 }}>
                   ORBITAL CONSENSUS · {data?.symbol}
@@ -530,11 +480,8 @@ export default function FlowDashboard() {
                   </div>
                 </div>
               </div>
-
-              {/* Three orbital components */}
               <div style={{ display: "flex", gap: 20 }}>
                 {(() => {
-                  // Average components across timeframes
                   const tfs = Object.values(tfSignals).filter(s => !s.error);
                   const avg = (key) => tfs.reduce((s, t) => s + t.components[key], 0) / (tfs.length || 1);
                   return (
@@ -548,7 +495,6 @@ export default function FlowDashboard() {
               </div>
             </div>
 
-            {/* TIMEFRAME TABLE */}
             <div style={{
               background: "#0a0e1a",
               border: "1px solid #0d1225",
@@ -556,7 +502,6 @@ export default function FlowDashboard() {
               overflow: "hidden",
               marginBottom: 20,
             }}>
-              {/* Table header */}
               <div style={{
                 display: "grid",
                 gridTemplateColumns: "52px 1fr 90px 80px 70px",
@@ -571,7 +516,6 @@ export default function FlowDashboard() {
                   </span>
                 ))}
               </div>
-
               {TIMEFRAMES.map(tf => tfSignals[tf] ? (
                 <TimeframeRow key={tf} tf={tf} data={tfSignals[tf]} />
               ) : (
@@ -581,7 +525,6 @@ export default function FlowDashboard() {
               ))}
             </div>
 
-            {/* COMPONENT BREAKDOWN per timeframe */}
             <div style={{
               background: "#0a0e1a",
               border: "1px solid #0d1225",
@@ -638,7 +581,6 @@ export default function FlowDashboard() {
                 })}
               </div>
             </div>
-
           </div>
         )}
 
