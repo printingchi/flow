@@ -1,0 +1,15 @@
+# FLOW — All Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Quantum Engine
+qiskit==1.1.0
+qiskit-aer==0.14.2
+
+# Backtest Engine
+pandas==2.2.2
+numpy==1.26.4
+requests==2.32.3
+
+# API Server (shared)
+flask==3.0.3
+flask-cors==4.0.1
