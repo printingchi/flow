@@ -8,10 +8,7 @@
  * Keys are NEVER logged or stored.
  */
 
-import { NextResponse } from 'next/server';
-import {
-  calculateMultiTimeframeSignal,
-} from '@/lib/orbitalEngine';
+import { calculateMultiTimeframeSignal } from '../../../lib/orbitalEngine';
 
 const BITGET_INTERVAL_MAP = {
   '1m': '1min', '5m': '5min', '15m': '15min',
