@@ -1,201 +1,48 @@
-/**
- * FLOW — Updated Orbital Route (User Key Support)
- * =================================================
- * File: /app/api/orbital/route.js  (REPLACE existing file)
- *
- * Now accepts user-supplied Bitget API keys via request headers.
- * Falls back to server env keys if none provided.
- * Keys are NEVER logged or stored.
- */
+import { NextResponse } from 'next/server';
 
-import { calculateMultiTimeframeSignal } from '../../../lib/orbitalEngine';
+// ─── ORBITAL ENGINE (inlined) ───────────────────────────────
+const TIMEFRAME_WEIGHTS = {
+  '1m':0.05,'5m':0.08,'15m':0.12,'30m':0.15,'1h':0.20,'4h':0.25,'1D':0.15,
+};
 
+function fft(re,im){const n=re.length;if(n<=1)return;const h=n/2;const er=new Float64Array(h),ei=new Float64Array(h),or=new Float64Array(h),oi=new Float64Array(h);for(let i=0;i<h;i++){er[i]=re[2*i];ei[i]=im[2*i];or[i]=re[2*i+1];oi[i]=im[2*i+1];}fft(er,ei);fft(or,oi);for(let k=0;k<h;k++){const a=(-2*Math.PI*k)/n,c=Math.cos(a),s=Math.sin(a),tr=c*or[k]-s*oi[k],ti=s*or[k]+c*oi[k];re[k]=er[k]+tr;im[k]=ei[k]+ti;re[k+h]=er[k]-tr;im[k+h]=ei[k]-ti;}}
+
+function padToPow2(data){let n=1;while(n<data.length)n<<=1;const p=new Float64Array(n);for(let i=0;i<data.length;i++)p[i]=data[i];return p;}
+
+function calculatePeriodicity(prices){if(prices.length<4)return 0;const p=padToPow2(prices),n=p.length,re=new Float64Array(p),im=new Float64Array(n);fft(re,im);let mx=0,tot=0,df=1;for(let i=1;i<n/2;i++){const m=Math.sqrt(re[i]**2+im[i]**2);tot+=m;if(m>mx){mx=m;df=i;}}const ph=Math.atan2(im[df],re[df]),cs=tot>0?mx/tot:0;return Math.min(cs*(1+Math.abs(Math.sin(ph*Math.PI))),1);}
+
+function calculateVelocity(prices){if(prices.length<3)return{score:0,direction:'neutral',momentum:'steady'};const ret=[];for(let i=1;i<prices.length;i++)ret.push((prices[i]-prices[i-1])/prices[i-1]);const acc=[];for(let i=1;i<ret.length;i++)acc.push(ret[i]-ret[i-1]);const av=ret.reduce((s,r)=>s+Math.abs(r),0)/ret.length,rw=Math.max(3,Math.floor(ret.length*0.2)),rv=ret.slice(-rw).reduce((s,r)=>s+Math.abs(r),0)/rw,vr=av>0?rv/av:0,aa=acc.reduce((s,a)=>s+Math.abs(a),0)/acc.length,ra=acc.slice(-rw).reduce((s,a)=>s+Math.abs(a),0)/Math.max(rw-1,1),ar=aa>0?ra/aa:0,dir=ret.slice(-5).reduce((s,r)=>s+Math.sign(r),0)/5;return{score:Math.min(vr*0.5+ar*0.3+Math.abs(dir)*0.2,1),direction:dir>0.2?'bullish':dir<-0.2?'bearish':'neutral',momentum:vr>1.2?'accelerating':vr<0.8?'decelerating':'steady'};}
+
+function calculateGravitational(prices,volumes=null){if(prices.length<5)return{score:0,nearestZone:'unknown',proximityPct:'0',pivotCount:0};const cur=prices[prices.length-1],hi=Math.max(...prices),lo=Math.min(...prices),range=hi-lo;if(range===0)return{score:0,nearestZone:'unknown',proximityPct:'0',pivotCount:0};const pivots=[],lb=Math.max(2,Math.floor(prices.length*0.1));for(let i=lb;i<prices.length-lb;i++){const w=prices.slice(i-lb,i+lb+1);if(prices[i]===Math.max(...w))pivots.push({price:prices[i],type:'resistance',strength:1});if(prices[i]===Math.min(...w))pivots.push({price:prices[i],type:'support',strength:1});}if(volumes&&volumes.length===prices.length){const av=volumes.reduce((s,v)=>s+v,0)/volumes.length;pivots.forEach(p=>{const idx=prices.indexOf(p.price);if(idx>=0)p.strength=volumes[idx]/av;});}let tg=0;pivots.forEach(p=>{const d=Math.abs(cur-p.price)/range;tg+=p.strength/(d**2+0.01);});const np=pivots.reduce((n,p)=>Math.abs(cur-p.price)<Math.abs(cur-n.price)?p:n,{price:hi,type:'resistance',strength:0}),prox=1-(Math.abs(cur-np.price)/range);return{score:Math.min(prox*0.6+Math.min(tg/100,0.4),1),nearestZone:np.type,proximityPct:(prox*100).toFixed(1),pivotCount:pivots.length};}
+
+function quantumBlend(p,v,g){const vs=typeof v==='object'?v.score:v,gs=typeof g==='object'?g.score:g,ap=Math.sqrt(p),av=Math.sqrt(vs),ag=Math.sqrt(gs),inf=(ap*av+av*ag+ag*ap)/3;return Math.min(p*0.3+vs*0.4+gs*0.3+inf*0.15,1);}
+
+function calculateOrbitalSignal(prices,timeframe,volumes=null){if(!prices||prices.length<10)return{error:'Insufficient data',timeframe};const ps=calculatePeriodicity(prices),vr=calculateVelocity(prices),gr=calculateGravitational(prices,volumes),vs=typeof vr==='object'?vr.score:vr,gs=typeof gr==='object'?gr.score:gr,bs=quantumBlend(ps,vs,gs),w=TIMEFRAME_WEIGHTS[timeframe]||0.1,dir=typeof vr==='object'?vr.direction:'neutral',nz=typeof gr==='object'?gr.nearestZone:'unknown';let ts='HOLD';if(bs>0.65&&dir==='bullish'&&nz==='support')ts='BUY';else if(bs>0.65&&dir==='bearish'&&nz==='resistance')ts='SELL';else if(bs>0.55)ts=dir==='bullish'?'WATCH_LONG':dir==='bearish'?'WATCH_SHORT':'HOLD';return{timeframe,weight:w,signal:parseFloat(bs.toFixed(4)),weightedSignal:parseFloat((bs*w).toFixed(4)),tradeSignal:ts,direction:dir,strength:bs>0.7?'STRONG':bs>0.5?'MODERATE':'WEAK',components:{periodicity:parseFloat(ps.toFixed(4)),velocity:parseFloat(vs.toFixed(4)),gravitational:parseFloat(gs.toFixed(4))},meta:{momentum:typeof vr==='object'?vr.momentum:'unknown',nearestZone:nz,proximityPct:typeof gr==='object'?gr.proximityPct:null,pivotCount:typeof gr==='object'?gr.pivotCount:0},timestamp:new Date().toISOString()};}
+
+function buildRecommendation(signal,strength,confluence){const sl=strength>0.7?'strong':strength>0.5?'moderate':'weak',cl=confluence>0.7?'high confluence':confluence>0.5?'moderate confluence':'low confluence';return({BUY:`🟢 BUY signal — ${sl} orbital momentum with ${cl} across timeframes.`,SELL:`🔴 SELL signal — ${sl} orbital pressure with ${cl} across timeframes.`,WATCH_LONG:`🟡 WATCH LONG — Orbital conditions building. Wait for confirmation on higher timeframes.`,WATCH_SHORT:`🟡 WATCH SHORT — Orbital conditions weakening. Monitor for reversal confirmation.`,HOLD:`⚪ HOLD — Orbital signals mixed or insufficient confluence. Await clearer alignment.`})[signal]||'⚪ No clear orbital signal detected.';}
+
+function calculateMultiTimeframeSignal(timeframeData){const signals={};let tws=0,tw=0;const tv={BUY:0,SELL:0,HOLD:0,WATCH_LONG:0,WATCH_SHORT:0};for(const[tf,data]of Object.entries(timeframeData)){if(!TIMEFRAME_WEIGHTS[tf])continue;const s=calculateOrbitalSignal(data.prices,tf,data.volumes||null);signals[tf]=s;if(!s.error){tws+=s.weightedSignal;tw+=s.weight;tv[s.tradeSignal]=(tv[s.tradeSignal]||0)+s.weight;}}const agg=tw>0?tws/tw:0,cs=Object.entries(tv).reduce((a,b)=>b[1]>a[1]?b:a)[0],mv=Math.max(...Object.values(tv)),conf=tw>0?mv/tw:0;return{aggregateSignal:parseFloat(agg.toFixed(4)),consensusSignal:cs,confluenceScore:parseFloat(conf.toFixed(4)),confluenceLevel:conf>0.7?'HIGH':conf>0.5?'MEDIUM':'LOW',tradeVotes:tv,timeframeSignals:signals,recommendation:buildRecommendation(cs,agg,conf),timestamp:new Date().toISOString()};}
+
+// ─── API ROUTE ───────────────────────────────────────────────
 const BITGET_INTERVAL_MAP = {
-  '1m': '1min', '5m': '5min', '15m': '15min',
-  '30m': '30min', '1h': '1H', '4h': '4H', '1D': '1Day',
+  '1m':'1min','5m':'5min','15m':'15min','30m':'30min','1h':'1H','4h':'4H','1D':'1Day',
 };
-
 const YAHOO_INTERVAL_MAP = {
-  '1m': '1m', '5m': '5m', '15m': '15m',
-  '30m': '30m', '1h': '1h', '4h': '1h', '1D': '1d',
+  '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'1h','1D':'1d',
 };
-
 const YAHOO_RANGE_MAP = {
-  '1m': '1d', '5m': '5d', '15m': '5d',
-  '30m': '1mo', '1h': '1mo', '4h': '1mo', '1D': '6mo',
+  '1m':'1d','5m':'5d','15m':'5d','30m':'1mo','1h':'1mo','4h':'1mo','1D':'6mo',
 };
 
-// ─────────────────────────────────────────────
-// EXTRACT USER KEYS FROM REQUEST HEADERS
-// ─────────────────────────────────────────────
-function extractUserKeys(request) {
-  const apiKey     = request.headers.get('x-bitget-api-key');
-  const apiSecret  = request.headers.get('x-bitget-api-secret');
-  const passphrase = request.headers.get('x-bitget-passphrase');
+function extractUserKeys(request){const apiKey=request.headers.get('x-bitget-api-key'),apiSecret=request.headers.get('x-bitget-api-secret'),passphrase=request.headers.get('x-bitget-passphrase');if(apiKey&&apiSecret&&passphrase)return{apiKey,apiSecret,passphrase,source:'user'};return{apiKey:process.env.BITGET_API_KEY||'',apiSecret:process.env.BITGET_API_SECRET||'',passphrase:process.env.BITGET_PASSPHRASE||'',source:'server'};}
 
-  // Use user keys if all three present, else fall back to env
-  if (apiKey && apiSecret && passphrase) {
-    return { apiKey, apiSecret, passphrase, source: 'user' };
-  }
+async function fetchBitgetCandles(symbol,timeframe,limit=100){const interval=BITGET_INTERVAL_MAP[timeframe];if(!interval)throw new Error(`Unsupported timeframe: ${timeframe}`);const url=`https://api.bitget.com/api/v2/mix/market/candles?symbol=${symbol}&granularity=${interval}&limit=${limit}&productType=USDT-FUTURES`;const res=await fetch(url,{headers:{'Content-Type':'application/json'},next:{revalidate:30}});if(!res.ok)throw new Error(`Bitget error: ${res.status}`);const json=await res.json();if(json.code!=='00000')throw new Error(`Bitget: ${json.msg}`);const candles=json.data||[];return{prices:candles.map(c=>parseFloat(c[4])).reverse(),volumes:candles.map(c=>parseFloat(c[5])).reverse(),timestamps:candles.map(c=>parseInt(c[0])).reverse()};}
 
-  return {
-    apiKey:     process.env.BITGET_API_KEY     || '',
-    apiSecret:  process.env.BITGET_API_SECRET  || '',
-    passphrase: process.env.BITGET_PASSPHRASE  || '',
-    source: 'server',
-  };
-}
+async function fetchYahooCandles(symbol,timeframe){const interval=YAHOO_INTERVAL_MAP[timeframe],range=YAHOO_RANGE_MAP[timeframe],url=`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${range}`;const res=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0','Accept':'application/json'},next:{revalidate:60}});if(!res.ok)throw new Error(`Yahoo error: ${res.status}`);const json=await res.json(),result=json.chart?.result?.[0];if(!result)throw new Error(`No Yahoo data for ${symbol}`);const timestamps=result.timestamp||[],closes=result.indicators?.quote?.[0]?.close||[],volumes=result.indicators?.quote?.[0]?.volume||[],vi=closes.map((c,i)=>c!==null?i:-1).filter(i=>i>=0);return{prices:vi.map(i=>closes[i]),volumes:vi.map(i=>volumes[i]||0),timestamps:vi.map(i=>timestamps[i]*1000)};}
 
-// ─────────────────────────────────────────────
-// FETCH BITGET (public endpoint — no auth needed for market data)
-// ─────────────────────────────────────────────
-async function fetchBitgetCandles(symbol, timeframe, limit = 100) {
-  const interval = BITGET_INTERVAL_MAP[timeframe];
-  if (!interval) throw new Error(`Unsupported timeframe: ${timeframe}`);
+function aggregate1hTo4h(prices,volumes){const out={prices:[],volumes:[]};for(let i=0;i+3<prices.length;i+=4){out.prices.push(prices.slice(i,i+4).at(-1));out.volumes.push(volumes.slice(i,i+4).reduce((a,b)=>a+b,0));}return out;}
 
-  // Bitget market data is public — no auth required
-  const url = `https://api.bitget.com/api/v2/mix/market/candles?symbol=${symbol}&granularity=${interval}&limit=${limit}&productType=USDT-FUTURES`;
+async function handler(request){try{let symbol,type,timeframes;if(request.method==='POST'){const body=await request.json();symbol=body.symbol;type=body.type||'crypto';timeframes=body.timeframes||'15m,1h,4h';}else{const{searchParams}=new URL(request.url);symbol=searchParams.get('symbol');type=searchParams.get('type')||'crypto';timeframes=searchParams.get('timeframes')||'15m,1h,4h';}if(!symbol)return NextResponse.json({error:'symbol is required'},{status:400});const keys=extractUserKeys(request),tfList=timeframes.split(',').map(t=>t.trim()),timeframeData={};await Promise.all(tfList.map(async(tf)=>{try{let data;if(type==='crypto'){data=await fetchBitgetCandles(symbol.toUpperCase(),tf);}else{if(tf==='4h'){const raw=await fetchYahooCandles(symbol.toUpperCase(),'1h');const agg=aggregate1hTo4h(raw.prices,raw.volumes);data={prices:agg.prices,volumes:agg.volumes,timestamps:[]};}else{data=await fetchYahooCandles(symbol.toUpperCase(),tf);}}if(data.prices.length>=10)timeframeData[tf]=data;}catch(err){console.error(`${symbol} ${tf} fetch error:`,err.message);}}));if(Object.keys(timeframeData).length===0)return NextResponse.json({error:'Could not fetch data. Check symbol and try again.'},{status:502});const orbitalResult=calculateMultiTimeframeSignal(timeframeData);return NextResponse.json({success:true,symbol:symbol.toUpperCase(),type,keySource:keys.source,processedTimeframes:Object.keys(timeframeData),orbital:orbitalResult});}catch(err){console.error('Orbital API error:',err);return NextResponse.json({error:err.message},{status:500});}}
 
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    next: { revalidate: 30 },
-  });
-
-  if (!res.ok) throw new Error(`Bitget error: ${res.status}`);
-
-  const json = await res.json();
-  if (json.code !== '00000') throw new Error(`Bitget: ${json.msg}`);
-
-  const candles = json.data || [];
-  return {
-    prices:     candles.map(c => parseFloat(c[4])).reverse(),
-    volumes:    candles.map(c => parseFloat(c[5])).reverse(),
-    timestamps: candles.map(c => parseInt(c[0])).reverse(),
-  };
-}
-
-// ─────────────────────────────────────────────
-// FETCH YAHOO FINANCE
-// ─────────────────────────────────────────────
-async function fetchYahooCandles(symbol, timeframe) {
-  const interval = YAHOO_INTERVAL_MAP[timeframe];
-  const range    = YAHOO_RANGE_MAP[timeframe];
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${range}`;
-
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
-    next: { revalidate: 60 },
-  });
-
-  if (!res.ok) throw new Error(`Yahoo error: ${res.status}`);
-
-  const json   = await res.json();
-  const result = json.chart?.result?.[0];
-  if (!result) throw new Error(`No Yahoo data for ${symbol}`);
-
-  const timestamps = result.timestamp || [];
-  const closes     = result.indicators?.quote?.[0]?.close || [];
-  const volumes    = result.indicators?.quote?.[0]?.volume || [];
-
-  const validIdx = closes.map((c, i) => c !== null ? i : -1).filter(i => i >= 0);
-
-  return {
-    prices:     validIdx.map(i => closes[i]),
-    volumes:    validIdx.map(i => volumes[i] || 0),
-    timestamps: validIdx.map(i => timestamps[i] * 1000),
-  };
-}
-
-function aggregate1hTo4h(prices, volumes) {
-  const out = { prices: [], volumes: [] };
-  for (let i = 0; i + 3 < prices.length; i += 4) {
-    out.prices.push(prices.slice(i, i + 4).at(-1));
-    out.volumes.push(volumes.slice(i, i + 4).reduce((a, b) => a + b, 0));
-  }
-  return out;
-}
-
-// ─────────────────────────────────────────────
-// MAIN HANDLER
-// ─────────────────────────────────────────────
-async function handler(request) {
-  try {
-    // Parse params
-    let symbol, type, timeframes;
-
-    if (request.method === 'POST') {
-      const body = await request.json();
-      symbol     = body.symbol;
-      type       = body.type || 'crypto';
-      timeframes = body.timeframes || '15m,1h,4h';
-    } else {
-      const { searchParams } = new URL(request.url);
-      symbol     = searchParams.get('symbol');
-      type       = searchParams.get('type') || 'crypto';
-      timeframes = searchParams.get('timeframes') || '15m,1h,4h';
-    }
-
-    if (!symbol) {
-      return NextResponse.json({ error: 'symbol is required' }, { status: 400 });
-    }
-
-    // Extract keys (user-supplied or server env)
-    const keys = extractUserKeys(request);
-    // Note: keys.source tells us which — but we never log the actual key values
-
-    const tfList = timeframes.split(',').map(t => t.trim());
-    const timeframeData = {};
-
-    await Promise.all(
-      tfList.map(async (tf) => {
-        try {
-          let data;
-
-          if (type === 'crypto') {
-            // Market data is public on Bitget — no auth needed
-            data = await fetchBitgetCandles(symbol.toUpperCase(), tf);
-          } else {
-            if (tf === '4h') {
-              const raw = await fetchYahooCandles(symbol.toUpperCase(), '1h');
-              const agg = aggregate1hTo4h(raw.prices, raw.volumes);
-              data = { prices: agg.prices, volumes: agg.volumes, timestamps: [] };
-            } else {
-              data = await fetchYahooCandles(symbol.toUpperCase(), tf);
-            }
-          }
-
-          if (data.prices.length >= 10) {
-            timeframeData[tf] = data;
-          }
-        } catch (err) {
-          console.error(`${symbol} ${tf} fetch error:`, err.message);
-        }
-      })
-    );
-
-    if (Object.keys(timeframeData).length === 0) {
-      return NextResponse.json(
-        { error: 'Could not fetch data. Check symbol and try again.' },
-        { status: 502 }
-      );
-    }
-
-    const orbitalResult = calculateMultiTimeframeSignal(timeframeData);
-
-    return NextResponse.json({
-      success: true,
-      symbol: symbol.toUpperCase(),
-      type,
-      keySource: keys.source,   // 'user' or 'server' — never the actual key
-      processedTimeframes: Object.keys(timeframeData),
-      orbital: orbitalResult,
-    });
-
-  } catch (err) {
-    console.error('Orbital API error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
-}
-
-export async function GET(request)  { return handler(request); }
-export async function POST(request) { return handler(request); }
+export async function GET(request){return handler(request);}
+export async function POST(request){return handler(request);}
